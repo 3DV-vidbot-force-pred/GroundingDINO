@@ -26,7 +26,19 @@ class BertModelWarper(nn.Module):
 
         self.get_extended_attention_mask = bert_model.get_extended_attention_mask
         self.invert_attention_mask = bert_model.invert_attention_mask
-        self.get_head_mask = bert_model.get_head_mask
+        if hasattr(bert_model, 'get_head_mask'):
+            self.get_head_mask = bert_model.get_head_mask
+        else:
+            # Compatibility with transformers >= 4.45 where get_head_mask moved
+            def _get_head_mask(head_mask, num_hidden_layers, is_attention_chunked=False):
+                if head_mask is not None:
+                    head_mask = self._convert_head_mask_to_5d(head_mask, num_hidden_layers)
+                    if is_attention_chunked:
+                        head_mask = head_mask.unsqueeze(-1)
+                else:
+                    head_mask = [None] * num_hidden_layers
+                return head_mask
+            self.get_head_mask = _get_head_mask
 
     def forward(
         self,
@@ -106,9 +118,15 @@ class BertModelWarper(nn.Module):
 
         # We can provide a self-attention mask of dimensions [batch_size, from_seq_length, to_seq_length]
         # ourselves in which case we just need to make it broadcastable to all heads.
-        extended_attention_mask: torch.Tensor = self.get_extended_attention_mask(
-            attention_mask, input_shape, device
-        )
+        try:
+            extended_attention_mask: torch.Tensor = self.get_extended_attention_mask(
+                attention_mask, input_shape, device
+            )
+        except TypeError:
+            # transformers >= 4.45: third arg is dtype, not device
+            extended_attention_mask: torch.Tensor = self.get_extended_attention_mask(
+                attention_mask, input_shape
+            )
 
         # If a 2D or 3D attention mask is provided for the cross-attention
         # we need to make broadcastable to [batch_size, num_heads, seq_length, seq_length]
