@@ -94,7 +94,7 @@ def predict(
             in logits
         ]
 
-    return boxes, logits.max(dim=1)[0], phrases
+    return boxes, outputs["pred_logits"].cpu(), phrases
 
 
 def annotate(image_source: np.ndarray, boxes: torch.Tensor, logits: torch.Tensor, phrases: List[str]) -> np.ndarray:
